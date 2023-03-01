@@ -42,12 +42,45 @@ func (s *UserStorage) DecreaseBalance(userID int, amount int) error {
 	return nil
 }
 
+func (s *UserStorage) increaseBalanceTx(tx *sql.Tx, userID int, amount int) error {
+	query := "UPDATE user_balances SET balance = balance + $1 where user_id = $2"
+	_, err := tx.Exec(query, amount, userID)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *UserStorage) decreaseBalanceTx(tx *sql.Tx, userID int, amount int) error {
+	query := "UPDATE user_balances SET balance = balance - $1 where user_id = $2"
+	_, err := tx.Exec(query, amount, userID)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (s *UserStorage) GetBalance(userID int) (int, error) {
-	query:= "SELECT balance from user_balances where user_id = $1"
-	row:=s.db.QueryRow(query, userID)
+	query := "SELECT balance from user_balances where user_id = $1"
+	row := s.db.QueryRow(query, userID)
 
 	var balance int
-	err:= row.Scan(&balance)
+	err := row.Scan(&balance)
+	if err != nil {
+		return 0, err
+	}
+
+	return balance, nil
+}
+
+func (s *UserStorage) getBalanceTx(tx *sql.Tx, userID int) (int, error) {
+	query := "SELECT balance from user_balances where user_id = $1"
+	row := tx.QueryRow(query, userID)
+
+	var balance int
+	err := row.Scan(&balance)
 	if err != nil {
 		return 0, err
 	}
@@ -56,20 +89,33 @@ func (s *UserStorage) GetBalance(userID int) (int, error) {
 }
 
 func (s *UserStorage) TransferMoney(FirstUserID, SecondUserID, amount int) error {
-	_,err := s.GetBalance(FirstUserID)
+	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
-	err = s.DecreaseBalance(FirstUserID, amount)
+	defer tx.Rollback()
+
+	_, err = s.getBalanceTx(tx, FirstUserID)
 	if err != nil {
 		return err
 	}
 
-	_, err = s.GetBalance(SecondUserID)
+	err = s.decreaseBalanceTx(tx, FirstUserID, amount)
 	if err != nil {
 		return err
 	}
-	err = s.IncreaseBalance(SecondUserID, amount)
+
+	_, err = s.getBalanceTx(tx, SecondUserID)
+	if err != nil {
+		return err
+	}
+
+	err = s.increaseBalanceTx(tx, SecondUserID, amount)
+	if err != nil {
+		return err
+	}
+
+	err = tx.Commit()
 	if err != nil {
 		return err
 	}

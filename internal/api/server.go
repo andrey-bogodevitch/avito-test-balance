@@ -10,7 +10,7 @@ type Server struct {
 func NewServer(port string, uh *UserHandler) *Server {
 	r := http.NewServeMux()
 	r.HandleFunc("/userbalance", uh.GetUserBalance)
-	r.HandleFunc("/deposit", uh.IncreaseBalance)
+	r.HandleFunc("/increase", uh.IncreaseBalance)
 	r.HandleFunc("/decrease", uh.DecreaseBalance)
 	r.HandleFunc("/transfer", uh.TransferMoney)
 	httpServer := &http.Server{
