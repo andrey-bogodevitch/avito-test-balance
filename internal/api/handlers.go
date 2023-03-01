@@ -2,8 +2,8 @@ package api
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 )
@@ -27,20 +27,41 @@ func NewHandler(s Storage) *UserHandler {
 }
 
 func (h *UserHandler) GetUserBalance(w http.ResponseWriter, r *http.Request) {
-	userID:= r.URL.Query().Get("user_id")
-	userIDInt, err:= strconv.Atoi(userID)
+	userID := r.URL.Query().Get("user_id")
+	userIDInt, err := strconv.Atoi(userID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	balance, err:= h.storage.GetBalance(userIDInt)
+	balance, err := h.storage.GetBalance(userIDInt)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	fmt.Fprint(w, "Balance: ", balance)
+	type Response struct {
+		UserID  int `json:"user_id"`
+		Balance int `json:"balance"`
+	}
+
+	resp := Response{
+		UserID:  userIDInt,
+		Balance: balance,
+	}
+
+	j, err := json.Marshal(resp)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	_, err = w.Write(j)
+	if err != nil {
+		log.Println(err)
+	}
 
 }
 
@@ -64,7 +85,7 @@ func (h *UserHandler) IncreaseBalance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_,err = h.storage.GetBalance(req.UserID)
+	_, err = h.storage.GetBalance(req.UserID)
 	if err != nil {
 		err = h.storage.CreateBalance(req.UserID, req.Amount)
 		if err != nil {
@@ -83,7 +104,7 @@ func (h *UserHandler) IncreaseBalance(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK) // не обязательно, так как если явно не указан код ответа, вернется 200
 }
 
-func (h *UserHandler) DecreaseBalance (w http.ResponseWriter, r *http.Request) {
+func (h *UserHandler) DecreaseBalance(w http.ResponseWriter, r *http.Request) {
 	//	ожидаем, что в теле запроса напр придет json следующего вида:
 	// {"user_id": 1, "amount": 500}
 	type Request struct {
@@ -118,15 +139,13 @@ func (h *UserHandler) DecreaseBalance (w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK) // не обязательно, так как если явно не указан код ответа, вернется 200
 }
 
-
-
-func (h *UserHandler) TransferMoney (w http.ResponseWriter, r *http.Request) {
+func (h *UserHandler) TransferMoney(w http.ResponseWriter, r *http.Request) {
 	//	ожидаем, что в теле запроса напр придет json следующего вида:
 	// {"user1_id": 1, "user2_id: 2, "amount": 500}
 	type Request struct {
-		FirstUserID int `json:"user1_id"`
+		FirstUserID  int `json:"user1_id"`
 		SecondUserID int `json:"user2_id"`
-		Amount      int `json:"amount"`
+		Amount       int `json:"amount"`
 	}
 
 	body, err := io.ReadAll(r.Body)

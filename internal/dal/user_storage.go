@@ -63,21 +63,20 @@ func (s *UserStorage) decreaseBalanceTx(tx *sql.Tx, userID int, amount int) erro
 }
 
 func (s *UserStorage) GetBalance(userID int) (int, error) {
-	query := "SELECT balance from user_balances where user_id = $1"
-	row := s.db.QueryRow(query, userID)
-
-	var balance int
-	err := row.Scan(&balance)
-	if err != nil {
-		return 0, err
-	}
-
-	return balance, nil
+	return s.getBalanceTx(nil, userID)
 }
 
+// getBalanceTx returns user balance.
+// If tx is empty, the query will send without transaction
 func (s *UserStorage) getBalanceTx(tx *sql.Tx, userID int) (int, error) {
 	query := "SELECT balance from user_balances where user_id = $1"
-	row := tx.QueryRow(query, userID)
+
+	var row *sql.Row
+	if tx == nil {
+		row = s.db.QueryRow(query, userID)
+	} else {
+		row = tx.QueryRow(query, userID)
+	}
 
 	var balance int
 	err := row.Scan(&balance)
@@ -88,29 +87,29 @@ func (s *UserStorage) getBalanceTx(tx *sql.Tx, userID int) (int, error) {
 	return balance, nil
 }
 
-func (s *UserStorage) TransferMoney(FirstUserID, SecondUserID, amount int) error {
+func (s *UserStorage) TransferMoney(senderID, recipientID, amount int) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	_, err = s.getBalanceTx(tx, FirstUserID)
+	_, err = s.getBalanceTx(tx, senderID)
 	if err != nil {
 		return err
 	}
 
-	err = s.decreaseBalanceTx(tx, FirstUserID, amount)
+	err = s.decreaseBalanceTx(tx, senderID, amount)
 	if err != nil {
 		return err
 	}
 
-	_, err = s.getBalanceTx(tx, SecondUserID)
+	_, err = s.getBalanceTx(tx, recipientID)
 	if err != nil {
 		return err
 	}
 
-	err = s.increaseBalanceTx(tx, SecondUserID, amount)
+	err = s.increaseBalanceTx(tx, recipientID, amount)
 	if err != nil {
 		return err
 	}
