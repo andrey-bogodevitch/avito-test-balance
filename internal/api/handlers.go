@@ -30,13 +30,13 @@ func (h *UserHandler) GetUserBalance(w http.ResponseWriter, r *http.Request) {
 	userID := r.URL.Query().Get("user_id")
 	userIDInt, err := strconv.Atoi(userID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		sendJsonError(w, err, http.StatusBadRequest)
 		return
 	}
 
 	balance, err := h.storage.GetBalance(userIDInt)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		sendJsonError(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -50,19 +50,7 @@ func (h *UserHandler) GetUserBalance(w http.ResponseWriter, r *http.Request) {
 		Balance: balance,
 	}
 
-	j, err := json.Marshal(resp)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-
-	_, err = w.Write(j)
-	if err != nil {
-		log.Println(err)
-	}
-
+	sendJson(w, resp)
 }
 
 func (h *UserHandler) IncreaseBalance(w http.ResponseWriter, r *http.Request) {
@@ -75,13 +63,13 @@ func (h *UserHandler) IncreaseBalance(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		sendJsonError(w, err, http.StatusBadRequest)
 		return
 	}
 	var req Request
 	err = json.Unmarshal(body, &req)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		sendJsonError(w, err, http.StatusBadRequest)
 		return
 	}
 
@@ -89,7 +77,7 @@ func (h *UserHandler) IncreaseBalance(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		err = h.storage.CreateBalance(req.UserID, req.Amount)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			sendJsonError(w, err, http.StatusInternalServerError)
 			return
 		}
 		return
@@ -97,7 +85,7 @@ func (h *UserHandler) IncreaseBalance(w http.ResponseWriter, r *http.Request) {
 
 	err = h.storage.IncreaseBalance(req.UserID, req.Amount)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		sendJsonError(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -114,25 +102,25 @@ func (h *UserHandler) DecreaseBalance(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		sendJsonError(w, err, http.StatusBadRequest)
 		return
 	}
 	var req Request
 	err = json.Unmarshal(body, &req)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		sendJsonError(w, err, http.StatusBadRequest)
 		return
 	}
 
 	_, err = h.storage.GetBalance(req.UserID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		sendJsonError(w, err, http.StatusInternalServerError)
 		return
 	}
 
 	err = h.storage.DecreaseBalance(req.UserID, req.Amount)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		sendJsonError(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -150,21 +138,54 @@ func (h *UserHandler) TransferMoney(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		sendJsonError(w, err, http.StatusBadRequest)
 		return
 	}
 	var req Request
 	err = json.Unmarshal(body, &req)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		sendJsonError(w, err, http.StatusBadRequest)
 		return
 	}
 
 	err = h.storage.TransferMoney(req.FirstUserID, req.SecondUserID, req.Amount)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		sendJsonError(w, err, http.StatusInternalServerError)
 		return
 	}
 
 	w.WriteHeader(http.StatusOK) // не обязательно, так как если явно не указан код ответа, вернется 200
+}
+
+func sendJsonError(w http.ResponseWriter, err error, code int) {
+	type jsonError struct {
+		Error string `json:"error"`
+	}
+
+	j, err := json.Marshal(jsonError{Error: err.Error()})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	_, err = w.Write(j)
+	if err != nil {
+		log.Println(err)
+	}
+}
+
+func sendJson(w http.ResponseWriter, data any) {
+	j, err := json.Marshal(data)
+	if err != nil {
+		sendJsonError(w, err, http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	_, err = w.Write(j)
+	if err != nil {
+		log.Println(err)
+	}
 }
