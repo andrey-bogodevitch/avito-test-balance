@@ -1,6 +1,13 @@
 package dal
 
-import "database/sql"
+import (
+	"database/sql"
+	"errors"
+	"fmt"
+)
+
+var ErrNotFound = errors.New("not found")
+var ErrDatabaseFail = errors.New("database failed")
 
 type UserStorage struct {
 	db *sql.DB
@@ -81,7 +88,10 @@ func (s *UserStorage) getBalanceTx(tx *sql.Tx, userID int) (int, error) {
 	var balance int
 	err := row.Scan(&balance)
 	if err != nil {
-		return 0, err
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, ErrNotFound
+		}
+		return 0, fmt.Errorf("%w: %s", ErrDatabaseFail, err)
 	}
 
 	return balance, nil
@@ -96,7 +106,7 @@ func (s *UserStorage) TransferMoney(senderID, recipientID, amount int) error {
 
 	_, err = s.getBalanceTx(tx, senderID)
 	if err != nil {
-		return err
+		return fmt.Errorf("get sender %d balance: %w", senderID, err)
 	}
 
 	err = s.decreaseBalanceTx(tx, senderID, amount)
@@ -106,7 +116,7 @@ func (s *UserStorage) TransferMoney(senderID, recipientID, amount int) error {
 
 	_, err = s.getBalanceTx(tx, recipientID)
 	if err != nil {
-		return err
+		return fmt.Errorf("get recipient %d balance: %w", recipientID, err)
 	}
 
 	err = s.increaseBalanceTx(tx, recipientID, amount)

@@ -2,10 +2,14 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"strconv"
+
+	"balance/internal/dal"
 )
 
 type Storage interface {
@@ -36,6 +40,10 @@ func (h *UserHandler) GetUserBalance(w http.ResponseWriter, r *http.Request) {
 
 	balance, err := h.storage.GetBalance(userIDInt)
 	if err != nil {
+		if errors.Is(err, dal.ErrNotFound) {
+			sendJsonError(w, fmt.Errorf("%w: id %d", err, userIDInt), http.StatusNotFound)
+			return
+		}
 		sendJsonError(w, err, http.StatusInternalServerError)
 		return
 	}
@@ -75,6 +83,11 @@ func (h *UserHandler) IncreaseBalance(w http.ResponseWriter, r *http.Request) {
 
 	_, err = h.storage.GetBalance(req.UserID)
 	if err != nil {
+		if !errors.Is(err, dal.ErrNotFound) {
+			sendJsonError(w, err, http.StatusInternalServerError)
+			return
+		}
+
 		err = h.storage.CreateBalance(req.UserID, req.Amount)
 		if err != nil {
 			sendJsonError(w, err, http.StatusInternalServerError)
@@ -88,8 +101,6 @@ func (h *UserHandler) IncreaseBalance(w http.ResponseWriter, r *http.Request) {
 		sendJsonError(w, err, http.StatusInternalServerError)
 		return
 	}
-
-	w.WriteHeader(http.StatusOK) // не обязательно, так как если явно не указан код ответа, вернется 200
 }
 
 func (h *UserHandler) DecreaseBalance(w http.ResponseWriter, r *http.Request) {
@@ -114,6 +125,10 @@ func (h *UserHandler) DecreaseBalance(w http.ResponseWriter, r *http.Request) {
 
 	_, err = h.storage.GetBalance(req.UserID)
 	if err != nil {
+		if errors.Is(err, dal.ErrNotFound) {
+			sendJsonError(w, fmt.Errorf("%w: id %d", err, req.UserID), http.StatusNotFound)
+			return
+		}
 		sendJsonError(w, err, http.StatusInternalServerError)
 		return
 	}
@@ -123,8 +138,6 @@ func (h *UserHandler) DecreaseBalance(w http.ResponseWriter, r *http.Request) {
 		sendJsonError(w, err, http.StatusInternalServerError)
 		return
 	}
-
-	w.WriteHeader(http.StatusOK) // не обязательно, так как если явно не указан код ответа, вернется 200
 }
 
 func (h *UserHandler) TransferMoney(w http.ResponseWriter, r *http.Request) {
@@ -136,13 +149,8 @@ func (h *UserHandler) TransferMoney(w http.ResponseWriter, r *http.Request) {
 		Amount       int `json:"amount"`
 	}
 
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		sendJsonError(w, err, http.StatusBadRequest)
-		return
-	}
 	var req Request
-	err = json.Unmarshal(body, &req)
+	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
 		sendJsonError(w, err, http.StatusBadRequest)
 		return
@@ -150,33 +158,31 @@ func (h *UserHandler) TransferMoney(w http.ResponseWriter, r *http.Request) {
 
 	err = h.storage.TransferMoney(req.FirstUserID, req.SecondUserID, req.Amount)
 	if err != nil {
+		if errors.Is(err, dal.ErrNotFound) {
+			sendJsonError(w, err, http.StatusNotFound)
+			return
+		}
 		sendJsonError(w, err, http.StatusInternalServerError)
 		return
 	}
+}
 
-	w.WriteHeader(http.StatusOK) // не обязательно, так как если явно не указан код ответа, вернется 200
+var ErrInternal = errors.New("internal error")
+
+type jsonError struct {
+	Error string `json:"error"`
 }
 
 func sendJsonError(w http.ResponseWriter, err error, code int) {
-	type jsonError struct {
-		Error string `json:"error"`
+	log.Println(err)
+	if errors.Is(err, dal.ErrDatabaseFail) {
+		err = ErrInternal
 	}
-
-	j, err := json.Marshal(jsonError{Error: err.Error()})
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	_, err = w.Write(j)
-	if err != nil {
-		log.Println(err)
-	}
+	sendJson(w, jsonError{Error: err.Error()}, code)
 }
 
-func sendJson(w http.ResponseWriter, data any) {
-	j, err := json.Marshal(data)
+func sendJson(w http.ResponseWriter, data any, code ...int) {
+	err := json.NewEncoder(w).Encode(data)
 	if err != nil {
 		sendJsonError(w, err, http.StatusInternalServerError)
 		return
@@ -184,8 +190,7 @@ func sendJson(w http.ResponseWriter, data any) {
 
 	w.Header().Set("Content-Type", "application/json")
 
-	_, err = w.Write(j)
-	if err != nil {
-		log.Println(err)
+	if len(code) > 0 {
+		w.WriteHeader(code[0])
 	}
 }
