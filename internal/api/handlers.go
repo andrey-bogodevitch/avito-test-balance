@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -69,13 +68,8 @@ func (h *UserHandler) IncreaseBalance(w http.ResponseWriter, r *http.Request) {
 		Amount int `json:"amount"`
 	}
 
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		sendJsonError(w, err, http.StatusBadRequest)
-		return
-	}
 	var req Request
-	err = json.Unmarshal(body, &req)
+	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
 		sendJsonError(w, err, http.StatusBadRequest)
 		return
@@ -111,25 +105,25 @@ func (h *UserHandler) DecreaseBalance(w http.ResponseWriter, r *http.Request) {
 		Amount int `json:"amount"`
 	}
 
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		sendJsonError(w, err, http.StatusBadRequest)
-		return
-	}
 	var req Request
-	err = json.Unmarshal(body, &req)
+	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
 		sendJsonError(w, err, http.StatusBadRequest)
 		return
 	}
 
-	_, err = h.storage.GetBalance(req.UserID)
+	balance, err := h.storage.GetBalance(req.UserID)
 	if err != nil {
 		if errors.Is(err, dal.ErrNotFound) {
 			sendJsonError(w, fmt.Errorf("%w: id %d", err, req.UserID), http.StatusNotFound)
 			return
 		}
 		sendJsonError(w, err, http.StatusInternalServerError)
+		return
+	}
+
+	if balance < req.Amount {
+		sendJsonError(w, fmt.Errorf("not enough money"), http.StatusBadRequest)
 		return
 	}
 
@@ -182,15 +176,15 @@ func sendJsonError(w http.ResponseWriter, err error, code int) {
 }
 
 func sendJson(w http.ResponseWriter, data any, code ...int) {
-	err := json.NewEncoder(w).Encode(data)
-	if err != nil {
-		sendJsonError(w, err, http.StatusInternalServerError)
-		return
-	}
-
 	w.Header().Set("Content-Type", "application/json")
 
 	if len(code) > 0 {
 		w.WriteHeader(code[0])
+	}
+
+	err := json.NewEncoder(w).Encode(data)
+	if err != nil {
+		sendJsonError(w, err, http.StatusInternalServerError)
+		return
 	}
 }
