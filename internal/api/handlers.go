@@ -8,28 +8,28 @@ import (
 	"net/http"
 	"strconv"
 
-	"balance/internal/dal"
+	"balance/internal/service"
 )
 
-type Storage interface {
-	CreateBalance(userID int, amount int) error
+type UserService interface {
+	GetBalanceByUserID(id int, currency string) (float64, string, error)
 	IncreaseBalance(userID int, amount int) error
 	DecreaseBalance(userID int, amount int) error
-	GetBalance(userID int) (int, error)
-	TransferMoney(userID1, userID2, amount int) error
+	TransferMoney(senderID int, recipientID int, amount int) error
 }
 
 type UserHandler struct {
-	storage Storage
+	userService UserService
 }
 
-func NewHandler(s Storage) *UserHandler {
+func NewHandler(us UserService) *UserHandler {
 	return &UserHandler{
-		storage: s,
+		userService: us,
 	}
 }
 
 func (h *UserHandler) GetUserBalance(w http.ResponseWriter, r *http.Request) {
+	currency := r.URL.Query().Get("currency")
 	userID := r.URL.Query().Get("user_id")
 	userIDInt, err := strconv.Atoi(userID)
 	if err != nil {
@@ -37,9 +37,9 @@ func (h *UserHandler) GetUserBalance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	balance, err := h.storage.GetBalance(userIDInt)
+	balance, currency, err := h.userService.GetBalanceByUserID(userIDInt, currency)
 	if err != nil {
-		if errors.Is(err, dal.ErrNotFound) {
+		if errors.Is(err, service.ErrNotFound) {
 			sendJsonError(w, fmt.Errorf("%w: id %d", err, userIDInt), http.StatusNotFound)
 			return
 		}
@@ -48,13 +48,15 @@ func (h *UserHandler) GetUserBalance(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type Response struct {
-		UserID  int `json:"user_id"`
-		Balance int `json:"balance"`
+		UserID   int     `json:"user_id"`
+		Balance  float64 `json:"balance"`
+		Currency string  `json:"currency"`
 	}
 
 	resp := Response{
-		UserID:  userIDInt,
-		Balance: balance,
+		UserID:   userIDInt,
+		Balance:  balance,
+		Currency: currency,
 	}
 
 	sendJson(w, resp)
@@ -75,23 +77,18 @@ func (h *UserHandler) IncreaseBalance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = h.storage.GetBalance(req.UserID)
-	if err != nil {
-		if !errors.Is(err, dal.ErrNotFound) {
-			sendJsonError(w, err, http.StatusInternalServerError)
-			return
-		}
-
-		err = h.storage.CreateBalance(req.UserID, req.Amount)
-		if err != nil {
-			sendJsonError(w, err, http.StatusInternalServerError)
-			return
-		}
+	if req.Amount < 1 {
+		sendJsonError(w, fmt.Errorf("amount must be positive"), http.StatusBadRequest)
 		return
 	}
 
-	err = h.storage.IncreaseBalance(req.UserID, req.Amount)
+	err = h.userService.IncreaseBalance(req.UserID, req.Amount)
 	if err != nil {
+		if errors.Is(err, service.ErrNotFound) {
+			sendJsonError(w, err, http.StatusNotFound)
+			return
+		}
+
 		sendJsonError(w, err, http.StatusInternalServerError)
 		return
 	}
@@ -112,23 +109,18 @@ func (h *UserHandler) DecreaseBalance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	balance, err := h.storage.GetBalance(req.UserID)
+	err = h.userService.DecreaseBalance(req.UserID, req.Amount)
 	if err != nil {
-		if errors.Is(err, dal.ErrNotFound) {
-			sendJsonError(w, fmt.Errorf("%w: id %d", err, req.UserID), http.StatusNotFound)
+		if errors.Is(err, service.ErrNotFound) {
+			sendJsonError(w, err, http.StatusNotFound)
 			return
 		}
-		sendJsonError(w, err, http.StatusInternalServerError)
-		return
-	}
 
-	if balance < req.Amount {
-		sendJsonError(w, fmt.Errorf("not enough money"), http.StatusBadRequest)
-		return
-	}
+		if errors.Is(err, service.ErrWrongInput) {
+			sendJsonError(w, err, http.StatusBadRequest)
+			return
+		}
 
-	err = h.storage.DecreaseBalance(req.UserID, req.Amount)
-	if err != nil {
 		sendJsonError(w, err, http.StatusInternalServerError)
 		return
 	}
@@ -138,9 +130,9 @@ func (h *UserHandler) TransferMoney(w http.ResponseWriter, r *http.Request) {
 	//	ожидаем, что в теле запроса напр придет json следующего вида:
 	// {"user1_id": 1, "user2_id: 2, "amount": 500}
 	type Request struct {
-		FirstUserID  int `json:"user1_id"`
-		SecondUserID int `json:"user2_id"`
-		Amount       int `json:"amount"`
+		SenderID    int `json:"sender_id"`
+		RecipientID int `json:"recipient_id"`
+		Amount      int `json:"amount"`
 	}
 
 	var req Request
@@ -150,9 +142,9 @@ func (h *UserHandler) TransferMoney(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.storage.TransferMoney(req.FirstUserID, req.SecondUserID, req.Amount)
+	err = h.userService.TransferMoney(req.SenderID, req.RecipientID, req.Amount)
 	if err != nil {
-		if errors.Is(err, dal.ErrNotFound) {
+		if errors.Is(err, service.ErrNotFound) {
 			sendJsonError(w, err, http.StatusNotFound)
 			return
 		}
@@ -169,7 +161,7 @@ type jsonError struct {
 
 func sendJsonError(w http.ResponseWriter, err error, code int) {
 	log.Println(err)
-	if errors.Is(err, dal.ErrDatabaseFail) {
+	if errors.Is(err, service.ErrDatabaseFail) {
 		err = ErrInternal
 	}
 	sendJson(w, jsonError{Error: err.Error()}, code)

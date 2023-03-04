@@ -4,10 +4,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-)
 
-var ErrNotFound = errors.New("not found")
-var ErrDatabaseFail = errors.New("database failed")
+	"balance/internal/service"
+)
 
 type UserStorage struct {
 	db *sql.DB
@@ -19,9 +18,9 @@ func NewUserStorage(dbpool *sql.DB) *UserStorage {
 	}
 }
 
-func (s *UserStorage) CreateBalance(userID int, amount int) error {
+func (s *UserStorage) CreateBalance(userID int) error {
 	query := "INSERT INTO user_balances (user_id, balance) values ($1,$2)"
-	_, err := s.db.Exec(query, userID, amount)
+	_, err := s.db.Exec(query, userID, 0)
 	if err != nil {
 		return err
 	}
@@ -89,9 +88,9 @@ func (s *UserStorage) getBalanceTx(tx *sql.Tx, userID int) (int, error) {
 	err := row.Scan(&balance)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return 0, ErrNotFound
+			return 0, service.ErrNotFound
 		}
-		return 0, fmt.Errorf("%w: %s", ErrDatabaseFail, err)
+		return 0, fmt.Errorf("%w: %s", service.ErrDatabaseFail, err)
 	}
 
 	return balance, nil

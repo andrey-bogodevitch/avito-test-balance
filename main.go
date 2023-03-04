@@ -7,6 +7,7 @@ import (
 
 	"balance/internal/api"
 	"balance/internal/dal"
+	"balance/internal/service"
 
 	_ "github.com/lib/pq"
 )
@@ -17,6 +18,11 @@ const (
 	user     = "postgres"
 	password = "dev"
 	dbname   = "postgres"
+)
+
+const (
+	addrConv   = "https://api.apilayer.com/exchangerates_data"
+	apiKeyConv = "rTCs2Rp0bYfFMU9BgTQqdhezF6myAg5t"
 )
 
 func main() {
@@ -36,7 +42,9 @@ func main() {
 	}
 
 	userStorage := dal.NewUserStorage(db)
-	userHandler := api.NewHandler(userStorage)
+	currencyConverter := dal.NewCurrencyConverter(addrConv, apiKeyConv)
+	userService := service.NewUser(userStorage, currencyConverter)
+	userHandler := api.NewHandler(userService)
 	serv := api.NewServer("8080", userHandler)
 	err = serv.Run()
 	if err != nil {
