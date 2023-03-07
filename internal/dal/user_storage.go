@@ -4,7 +4,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
+	"balance/internal/entity"
 	"balance/internal/service"
 )
 
@@ -29,8 +31,32 @@ func (s *UserStorage) CreateBalance(userID int) error {
 }
 
 func (s *UserStorage) IncreaseBalance(userID int, amount int) error {
-	query := "UPDATE user_balances SET balance = balance + $1 where user_id = $2"
-	_, err := s.db.Exec(query, amount, userID)
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	err = s.increaseBalanceTx(tx, userID, amount)
+	if err != nil {
+		return err
+	}
+
+	oRecipientID := int64(userID)
+
+	operation := entity.Operation{
+		Amount:      int64(amount),
+		CreatedAt:   time.Now(),
+		Description: "Increase balance",
+		SenderID:    &oRecipientID,
+	}
+
+	err = s.saveOperation(tx, operation)
+	if err != nil {
+		return err
+	}
+
+	err = tx.Commit()
 	if err != nil {
 		return err
 	}
@@ -39,8 +65,32 @@ func (s *UserStorage) IncreaseBalance(userID int, amount int) error {
 }
 
 func (s *UserStorage) DecreaseBalance(userID int, amount int) error {
-	query := "UPDATE user_balances SET balance = balance - $1 where user_id = $2"
-	_, err := s.db.Exec(query, amount, userID)
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	err = s.decreaseBalanceTx(tx, userID, amount)
+	if err != nil {
+		return err
+	}
+
+	oSenderID := int64(userID)
+
+	operation := entity.Operation{
+		Amount:      int64(amount),
+		CreatedAt:   time.Now(),
+		Description: "Decrease balance",
+		SenderID:    &oSenderID,
+	}
+
+	err = s.saveOperation(tx, operation)
+	if err != nil {
+		return err
+	}
+
+	err = tx.Commit()
 	if err != nil {
 		return err
 	}
@@ -123,7 +173,33 @@ func (s *UserStorage) TransferMoney(senderID, recipientID, amount int) error {
 		return err
 	}
 
+	oSenderID := int64(senderID)
+	oRecipientID := int64(recipientID)
+
+	operation := entity.Operation{
+		Amount:      int64(amount),
+		CreatedAt:   time.Now(),
+		Description: "Transfer money",
+		SenderID:    &oSenderID,
+		RecipientID: &oRecipientID,
+	}
+
+	err = s.saveOperation(tx, operation)
+	if err != nil {
+		return err
+	}
+
 	err = tx.Commit()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *UserStorage) saveOperation(tx *sql.Tx, o entity.Operation) error {
+	query := "INSERT INTO operations (amount, created_at, description, sender_id, recipient_id) values ($1,$2,$3,$4,$5)"
+	_, err := tx.Exec(query, o.Amount, o.CreatedAt, o.Description, o.SenderID, o.RecipientID)
 	if err != nil {
 		return err
 	}
