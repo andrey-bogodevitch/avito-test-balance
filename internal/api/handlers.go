@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"balance/internal/entity"
 	"balance/internal/service"
 )
 
@@ -16,6 +17,7 @@ type UserService interface {
 	IncreaseBalance(userID int, amount int) error
 	DecreaseBalance(userID int, amount int) error
 	TransferMoney(senderID int, recipientID int, amount int) error
+	GetOperationsByID(userID int) ([]entity.Operation, error)
 }
 
 type UserHandler struct {
@@ -127,8 +129,6 @@ func (h *UserHandler) DecreaseBalance(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *UserHandler) TransferMoney(w http.ResponseWriter, r *http.Request) {
-	//	ожидаем, что в теле запроса напр придет json следующего вида:
-	// {"user1_id": 1, "user2_id: 2, "amount": 500}
 	type Request struct {
 		SenderID    int `json:"sender_id"`
 		RecipientID int `json:"recipient_id"`
@@ -151,6 +151,27 @@ func (h *UserHandler) TransferMoney(w http.ResponseWriter, r *http.Request) {
 		sendJsonError(w, err, http.StatusInternalServerError)
 		return
 	}
+}
+
+func (h *UserHandler) GetUserOperations(w http.ResponseWriter, r *http.Request) {
+	userID := r.URL.Query().Get("user_id")
+	userIDInt, err := strconv.Atoi(userID)
+	if err != nil {
+		sendJsonError(w, err, http.StatusBadRequest)
+		return
+	}
+
+	operations, err := h.userService.GetOperationsByID(userIDInt)
+	if err != nil {
+		if errors.Is(err, service.ErrNotFound) {
+			sendJsonError(w, fmt.Errorf("%w: id %d", err, userIDInt), http.StatusNotFound)
+			return
+		}
+		sendJsonError(w, err, http.StatusInternalServerError)
+		return
+	}
+
+	sendJson(w, operations)
 }
 
 var ErrInternal = errors.New("internal error")

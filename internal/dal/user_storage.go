@@ -206,3 +206,31 @@ func (s *UserStorage) saveOperation(tx *sql.Tx, o entity.Operation) error {
 
 	return nil
 }
+
+func (s *UserStorage) GetUserOperations(userID int) ([]entity.Operation, error) {
+	query := `
+SELECT id, amount, created_at, description, sender_id, recipient_id
+from operations where sender_id = $1 or recipient_id = $1 
+order by created_at desc`
+
+	rows, err := s.db.Query(query, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	var operations []entity.Operation
+
+	for rows.Next() {
+		var op entity.Operation
+		err = rows.Scan(&op.ID, &op.Amount, &op.CreatedAt, &op.Description, &op.SenderID, &op.RecipientID)
+		if err != nil {
+			return nil, err
+		}
+
+		operations = append(operations, op)
+	}
+
+	return operations, nil
+}

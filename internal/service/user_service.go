@@ -3,6 +3,8 @@ package service
 import (
 	"errors"
 	"fmt"
+
+	"balance/internal/entity"
 )
 
 var (
@@ -26,6 +28,7 @@ type Storage interface {
 	DecreaseBalance(userID int, amount int) error
 	GetBalance(userID int) (int, error)
 	TransferMoney(senderID, recipientID, amount int) error
+	GetUserOperations(userID int) ([]entity.Operation, error)
 }
 
 type User struct {
@@ -103,4 +106,13 @@ func (u *User) TransferMoney(senderID int, recipientID int, amount int) error {
 	}
 
 	return nil
+}
+
+func (u *User) GetOperationsByID(userID int) ([]entity.Operation, error) {
+	operations, err := u.storage.GetUserOperations(userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user %d operations: %w", userID, err)
+	}
+
+	return operations, nil
 }

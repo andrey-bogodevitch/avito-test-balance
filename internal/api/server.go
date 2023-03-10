@@ -13,6 +13,7 @@ func NewServer(port string, uh *UserHandler) *Server {
 	r.HandleFunc("/increase", uh.IncreaseBalance)
 	r.HandleFunc("/decrease", uh.DecreaseBalance)
 	r.HandleFunc("/transfer", uh.TransferMoney)
+	r.HandleFunc("/operations", uh.GetUserOperations)
 	httpServer := &http.Server{
 		Addr:    ":" + port,
 		Handler: r,
