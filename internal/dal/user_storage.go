@@ -207,13 +207,13 @@ func (s *UserStorage) saveOperation(tx *sql.Tx, o entity.Operation) error {
 	return nil
 }
 
-func (s *UserStorage) GetUserOperations(userID int) ([]entity.Operation, error) {
+func (s *UserStorage) GetUserOperations(userID int, limit int) ([]entity.Operation, error) {
 	query := `
 SELECT id, amount, created_at, description, sender_id, recipient_id
 from operations where sender_id = $1 or recipient_id = $1 
-order by created_at desc`
+order by created_at desc limit $2`
 
-	rows, err := s.db.Query(query, userID)
+	rows, err := s.db.Query(query, userID, limit)
 	if err != nil {
 		return nil, err
 	}

@@ -17,7 +17,7 @@ type UserService interface {
 	IncreaseBalance(userID int, amount int) error
 	DecreaseBalance(userID int, amount int) error
 	TransferMoney(senderID int, recipientID int, amount int) error
-	GetOperationsByID(userID int) ([]entity.Operation, error)
+	GetOperationsByID(userID int, limit int) ([]entity.Operation, error)
 }
 
 type UserHandler struct {
@@ -154,6 +154,13 @@ func (h *UserHandler) TransferMoney(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *UserHandler) GetUserOperations(w http.ResponseWriter, r *http.Request) {
+	limit := r.URL.Query().Get("limit")
+	limitInt, err := strconv.Atoi(limit)
+	if err != nil {
+		sendJsonError(w, err, http.StatusBadRequest)
+		return
+	}
+
 	userID := r.URL.Query().Get("user_id")
 	userIDInt, err := strconv.Atoi(userID)
 	if err != nil {
@@ -161,7 +168,7 @@ func (h *UserHandler) GetUserOperations(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	operations, err := h.userService.GetOperationsByID(userIDInt)
+	operations, err := h.userService.GetOperationsByID(userIDInt, limitInt)
 	if err != nil {
 		if errors.Is(err, service.ErrNotFound) {
 			sendJsonError(w, fmt.Errorf("%w: id %d", err, userIDInt), http.StatusNotFound)
