@@ -28,7 +28,7 @@ type Storage interface {
 	DecreaseBalance(userID int, amount int) error
 	GetBalance(userID int) (int, error)
 	TransferMoney(senderID, recipientID, amount int) error
-	GetUserOperations(userID int, limit int) ([]entity.Operation, error)
+	GetUserOperations(userID int, limit int, page int, sort string) ([]entity.Operation, error)
 }
 
 type User struct {
@@ -108,8 +108,8 @@ func (u *User) TransferMoney(senderID int, recipientID int, amount int) error {
 	return nil
 }
 
-func (u *User) GetOperationsByID(userID int, limit int) ([]entity.Operation, error) {
-	operations, err := u.storage.GetUserOperations(userID, limit)
+func (u *User) GetOperationsByID(userID int, limit int, page int, sort string) ([]entity.Operation, error) {
+	operations, err := u.storage.GetUserOperations(userID, limit, page, sort)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user %d operations: %w", userID, err)
 	}

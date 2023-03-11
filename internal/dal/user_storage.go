@@ -207,13 +207,15 @@ func (s *UserStorage) saveOperation(tx *sql.Tx, o entity.Operation) error {
 	return nil
 }
 
-func (s *UserStorage) GetUserOperations(userID int, limit int) ([]entity.Operation, error) {
-	query := `
-SELECT id, amount, created_at, description, sender_id, recipient_id
+func (s *UserStorage) GetUserOperations(userID int, limit int, page int, sort string) ([]entity.Operation, error) {
+	offset := page*limit - limit
+	query := fmt.Sprintf(
+		`SELECT id, amount, created_at, description, sender_id, recipient_id
 from operations where sender_id = $1 or recipient_id = $1 
-order by created_at desc limit $2`
+order by %s desc limit %d offset %d`, sort, limit, offset,
+	)
 
-	rows, err := s.db.Query(query, userID, limit)
+	rows, err := s.db.Query(query, userID)
 	if err != nil {
 		return nil, err
 	}
