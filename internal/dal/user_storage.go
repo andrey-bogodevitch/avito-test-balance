@@ -207,7 +207,7 @@ func (s *UserStorage) saveOperation(tx *sql.Tx, o entity.Operation) error {
 	return nil
 }
 
-func (s *UserStorage) GetUserOperations(userID int, limit int, page int, sort string) ([]entity.Operation, error) {
+func (s *UserStorage) GetUserOperations(userID int, limit int, page int, sort string) ([]entity.Operation, int, error) {
 	offset := page*limit - limit
 	query := fmt.Sprintf(
 		`SELECT id, amount, created_at, description, sender_id, recipient_id
@@ -217,7 +217,7 @@ order by %s desc limit %d offset %d`, sort, limit, offset,
 
 	rows, err := s.db.Query(query, userID)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	defer rows.Close()
@@ -228,11 +228,18 @@ order by %s desc limit %d offset %d`, sort, limit, offset,
 		var op entity.Operation
 		err = rows.Scan(&op.ID, &op.Amount, &op.CreatedAt, &op.Description, &op.SenderID, &op.RecipientID)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 
 		operations = append(operations, op)
 	}
 
-	return operations, nil
+	var count int
+	query = "SELECT COUNT(*) FROM operations where sender_id = $1 or recipient_id = $1"
+	err = s.db.QueryRow(query, userID).Scan(&count)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return operations, count, nil
 }

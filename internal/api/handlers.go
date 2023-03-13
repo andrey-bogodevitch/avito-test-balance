@@ -17,7 +17,7 @@ type UserService interface {
 	IncreaseBalance(userID int, amount int) error
 	DecreaseBalance(userID int, amount int) error
 	TransferMoney(senderID int, recipientID int, amount int) error
-	GetOperationsByID(userID int, limit int, page int, sort string) ([]entity.Operation, error)
+	GetOperationsByID(userID int, limit int, page int, sort string) ([]entity.Operation, int, error)
 }
 
 type UserHandler struct {
@@ -176,7 +176,7 @@ func (h *UserHandler) GetUserOperations(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	operations, err := h.userService.GetOperationsByID(userIDInt, limitInt, pageInt, sort)
+	operations, count, err := h.userService.GetOperationsByID(userIDInt, limitInt, pageInt, sort)
 	if err != nil {
 		if errors.Is(err, service.ErrNotFound) {
 			sendJsonError(w, fmt.Errorf("%w: id %d", err, userIDInt), http.StatusNotFound)
@@ -186,7 +186,28 @@ func (h *UserHandler) GetUserOperations(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	sendJson(w, operations)
+	type Response struct {
+		Items      []entity.Operation `json:"items"`
+		TotalItems int                `json:"total_items"`
+		Page       int                `json:"page"`
+		TotalPages int                `json:"total_pages"`
+		Limit      int                `json:"limit"`
+	}
+
+	totalPages := count / limitInt
+	if count%limitInt != 0 {
+		totalPages++
+	}
+
+	resp := Response{
+		Items:      operations,
+		TotalItems: count,
+		Page:       pageInt,
+		TotalPages: totalPages,
+		Limit:      limitInt,
+	}
+
+	sendJson(w, resp)
 }
 
 var ErrInternal = errors.New("internal error")
